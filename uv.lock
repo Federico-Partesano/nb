@@ -505,7 +505,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "fastembed", specifier = ">=0.4" },
-    { name = "mcp", specifier = ">=1.2" },
+    { name = "mcp", specifier = ">=2.3,<3" },
     { name = "numpy", specifier = ">=1.26" },
     { name = "pyyaml", specifier = ">=6" },
     { name = "typer", specifier = ">=0.12" },
