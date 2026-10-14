@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import hashlib
+import os
+import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -34,9 +36,10 @@ def leggi(emb_dir: Path, h: str, dim: int) -> np.ndarray | None:
 def scrivi(emb_dir: Path, h: str, vettore: np.ndarray) -> Path:
     p = percorso(emb_dir, h)
     p.parent.mkdir(parents=True, exist_ok=True)
-    tmp = p.with_suffix(".tmp")
-    tmp.write_bytes(np.asarray(vettore, dtype="<f2").tobytes())
-    tmp.replace(p)
+    fd, tmp = tempfile.mkstemp(dir=p.parent, prefix=f"{h}.", suffix=".tmp")  # nome unico: più scrittori insieme
+    with os.fdopen(fd, "wb") as f:
+        f.write(np.asarray(vettore, dtype="<f2").tobytes())
+    os.replace(tmp, p)
     return p
 
 

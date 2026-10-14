@@ -77,3 +77,17 @@ def test_simili_indice_vuoto(kb):
     ind = Indice(c, FakeEmbedder(c.model_id, c.dim))
     ind.sync()
     assert simili(ind, "x.md", "ciao") == []
+
+
+def test_cerca_dopo_sync_di_altro_processo(kb):
+    ind = popola(kb)
+    cerca(ind, "Keycloak")
+    p = kb / "progetti/gestionale/documentazione/fatture.md"
+    p.write_text("# Fatture\nOra in formato JSON unico\n")
+    c = carica(kb)
+    altro = Indice(c, FakeEmbedder(c.model_id, c.dim))
+    altro.sync()
+    altro.close()
+    ind.sync()
+    r = cerca(ind, "JSON unico")
+    assert r[0].percorso == "progetti/gestionale/documentazione/fatture.md"

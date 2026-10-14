@@ -1,4 +1,6 @@
 import os
+import sqlite3
+import threading
 
 from aiuti import scrivi
 
@@ -129,3 +131,60 @@ def test_avvisi(kb):
     ind = nuovo(kb)
     ind.sync()
     assert "non ammesso" in ind.avvisi()["generale/a.md"][0]
+
+
+def test_matrice_aggiornata_dopo_sync_di_altro_processo(kb):
+    p = scrivi(kb, "generale/a.md", "# A\nalfa\n")
+    scrivi(kb, "generale/b.md", "# B\nbeta\n")  # così i nuovi id non riusano i vecchi
+    server = nuovo(kb)
+    server.sync()
+    server.matrice()
+    p.write_text("# A\nomega unico\n")
+    tocca(p)
+    altro = nuovo(kb)
+    altro.sync()
+    altro.close()
+    assert not server.sync().cambiato
+    ids = {r[0] for r in server.db.execute("SELECT id FROM chunk")}
+    assert set(server.matrice().ids.tolist()) == ids
+
+
+def test_sync_concorrente_stesso_indice(kb):
+    ind = nuovo(kb)
+    errori = []
+
+    def lavora(t):
+        try:
+            for i in range(15):
+                scrivi(kb, f"generale/f{t}.md", f"# F\nversione {i} thread {t}\n")
+                ind.sync()
+        except Exception as e:  # noqa: BLE001
+            errori.append(e)
+
+    thread = [threading.Thread(target=lavora, args=(t,)) for t in range(3)]
+    for t in thread:
+        t.start()
+    for t in thread:
+        t.join()
+    assert errori == []
+    assert conta(ind, "chunk") == conta(ind, "chunk_fts")
+
+
+def test_lock_non_tenuto_durante_embedding(kb):
+    c = carica(kb)
+    scrivi(kb, "generale/vecchio.md", "# V\nvecchio\n")
+    ind = nuovo(kb)
+    ind.sync()
+    (kb / "generale/vecchio.md").unlink()
+    scrivi(kb, "generale/nuovo.md", "# N\nnuovo\n")
+
+    class Sonda(FakeEmbedder):
+        def embed(self, testi):
+            altro = sqlite3.connect(c.index_path, timeout=0.2)
+            altro.execute("BEGIN IMMEDIATE")
+            altro.rollback()
+            altro.close()
+            return super().embed(testi)
+
+    ind.embedder = Sonda(c.model_id, c.dim)
+    assert ind.sync().aggiunti == ["generale/nuovo.md"]

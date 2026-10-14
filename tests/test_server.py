@@ -1,5 +1,6 @@
 import asyncio
 import json
+import threading
 
 import pytest
 from aiuti import g, scrivi
@@ -62,3 +63,24 @@ def test_proponi_e_carica(repo_condiviso, tmp_path):
     assert esito["pushato"] is True
     g(r.b, "pull", "-q")
     assert (r.b / "generale/nota.md").exists()
+
+
+def test_chiamate_concorrenti(kb):
+    s = crea_server(kb)
+    errori = []
+
+    def lavora(t):
+        try:
+            for i in range(10):
+                scrivi(kb, f"generale/f{t}.md", f"# F\nversione {i} thread {t}\n")
+                chiama(s, "cerca", {"query": "versione"})
+                chiama(s, "elenca_fonti", {})
+        except Exception as e:  # noqa: BLE001
+            errori.append(e)
+
+    thread = [threading.Thread(target=lavora, args=(t,)) for t in range(3)]
+    for t in thread:
+        t.start()
+    for t in thread:
+        t.join()
+    assert errori == []

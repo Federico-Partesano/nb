@@ -1,3 +1,5 @@
+import threading
+
 import numpy as np
 import pytest
 
@@ -75,3 +77,24 @@ def test_modello_reale_semantica():
     ])
     assert m.shape == (3, 384)
     assert m[0] @ m[1] > m[0] @ m[2]
+
+
+def test_scrivi_concorrente_stesso_hash(tmp_path):
+    v = np.ones(384, np.float32)
+    errori = []
+
+    def scrivi_tante():
+        try:
+            for _ in range(50):
+                scrivi(tmp_path, H1, v)
+        except Exception as e:  # noqa: BLE001
+            errori.append(e)
+
+    thread = [threading.Thread(target=scrivi_tante) for _ in range(4)]
+    for t in thread:
+        t.start()
+    for t in thread:
+        t.join()
+    assert errori == []
+    assert leggi(tmp_path, H1, 384) is not None
+    assert not list(tmp_path.glob("*/*.tmp"))

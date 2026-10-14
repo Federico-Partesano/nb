@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -15,12 +16,12 @@ from nb.embedder import Embedder
 from nb.fonti import Fonte, elenca_md
 from nb.vettori import assicura, chiave
 
-SCHEMA = "1"
+SCHEMA = "2"
 DDL = """
 CREATE TABLE meta(k TEXT PRIMARY KEY, v TEXT);
 CREATE TABLE file(percorso TEXT PRIMARY KEY, mtime_ns INTEGER, sha TEXT, tipo TEXT,
                   progetto TEXT, data TEXT, partecipanti TEXT, avvisi TEXT);
-CREATE TABLE chunk(id INTEGER PRIMARY KEY, percorso TEXT NOT NULL, titoli TEXT, testo TEXT,
+CREATE TABLE chunk(id INTEGER PRIMARY KEY AUTOINCREMENT, percorso TEXT NOT NULL, titoli TEXT, testo TEXT,
                    riga_inizio INTEGER, riga_fine INTEGER, speaker TEXT, hash TEXT, vettore BLOB);
 CREATE INDEX chunk_percorso ON chunk(percorso);
 CREATE VIRTUAL TABLE chunk_fts USING fts5(testo, titoli, tokenize='unicode61 remove_diacritics 2');
@@ -50,8 +51,10 @@ class Indice:
     def __init__(self, config: Config, embedder: Embedder):
         self.config = config
         self.embedder = embedder
+        self.lock = threading.RLock()  # una sola operazione alla volta sulla connessione condivisa
         self.db = self._apri()
         self._matrice: Matrice | None = None
+        self._impronta: tuple[int, int] | None = None
 
     def _connetti(self) -> sqlite3.Connection:
         db = sqlite3.connect(self.config.index_path, timeout=10, check_same_thread=False)
@@ -79,11 +82,15 @@ class Indice:
         return db
 
     def sync(self) -> ReportSync:
+        with self.lock:
+            return self._sync()
+
+    def _sync(self) -> ReportSync:
         root = self.config.root
         rep = ReportSync()
         noti = {p: (mt, sha) for p, mt, sha in self.db.execute("SELECT percorso, mtime_ns, sha FROM file")}
         su_disco = elenca_md(root)
-        da_elaborare = []
+        solo_mtime, da_elaborare = [], []
         for p in su_disco:
             mtime = (root / p).stat().st_mtime_ns
             if p in noti and noti[p][0] == mtime:
@@ -91,26 +98,32 @@ class Indice:
             dati = (root / p).read_bytes()
             sha = hashlib.sha256(dati).hexdigest()
             if p in noti and noti[p][1] == sha:
-                self.db.execute("UPDATE file SET mtime_ns = ? WHERE percorso = ?", (mtime, p))
+                solo_mtime.append((mtime, p))
                 continue
             (rep.modificati if p in noti else rep.aggiunti).append(p)
             da_elaborare.append((p, dati.decode("utf-8", errors="replace"), sha, mtime))
         rep.rimossi = sorted(set(noti) - set(su_disco))
-        for p in rep.rimossi:
-            self._rimuovi(p)
         elaborati, testi = [], {}
         for p, testo, sha, mtime in da_elaborare:
             fonte, chunks = chunk_di(self.config, p, testo)
             hashes = [chiave(self.embedder.model_id, c.testo_embed) for c in chunks]
             testi.update(zip(hashes, (c.testo_embed for c in chunks)))
             elaborati.append((p, sha, mtime, fonte, chunks, hashes))
+        # embedding (lento, CPU) prima di toccare il DB: il lock di scrittura dura solo il blocco sotto
         vettori, rep.vettori_nuovi = assicura(self.config.emb_dir, self.embedder, testi)
-        for p, sha, mtime, fonte, chunks, hashes in elaborati:
-            self._rimuovi(p)
-            self._inserisci(p, sha, mtime, fonte, chunks, hashes, vettori)
-        self.db.commit()
-        if rep.cambiato:
-            self._matrice = None
+        if solo_mtime or rep.rimossi or elaborati:
+            self.db.execute("BEGIN IMMEDIATE")
+            try:
+                self.db.executemany("UPDATE file SET mtime_ns = ? WHERE percorso = ?", solo_mtime)
+                for p in rep.rimossi:
+                    self._rimuovi(p)
+                for p, sha, mtime, fonte, chunks, hashes in elaborati:
+                    self._rimuovi(p)  # anche righe scritte nel frattempo da un altro processo
+                    self._inserisci(p, sha, mtime, fonte, chunks, hashes, vettori)
+                self.db.commit()
+            except BaseException:
+                self.db.rollback()
+                raise
         return rep
 
     def _rimuovi(self, p: str) -> None:
@@ -137,14 +150,21 @@ class Indice:
                             (cur.lastrowid, c.testo, " ".join(c.titoli)))
 
     def matrice(self) -> Matrice:
-        if self._matrice is None:
-            righe = self.db.execute("SELECT id, percorso, vettore FROM chunk ORDER BY id").fetchall()
-            self._matrice = Matrice(
-                ids=np.array([r[0] for r in righe], dtype=np.int64),
-                vettori=np.frombuffer(b"".join(r[2] for r in righe), dtype="<f4").reshape(len(righe), self.embedder.dim),
-                percorsi=np.array([r[1] for r in righe], dtype=object),
-            )
-        return self._matrice
+        with self.lock:
+            # l'impronta cambia anche quando scrive un altro processo (id AUTOINCREMENT, mai riusati)
+            impronta = tuple(self.db.execute("SELECT COUNT(*), COALESCE(MAX(id), 0) FROM chunk").fetchone())
+            if self._matrice is None or impronta != self._impronta:
+                self._matrice = self._carica_matrice()
+                self._impronta = impronta
+            return self._matrice
+
+    def _carica_matrice(self) -> Matrice:
+        righe = self.db.execute("SELECT id, percorso, vettore FROM chunk ORDER BY id").fetchall()
+        return Matrice(
+            ids=np.array([r[0] for r in righe], dtype=np.int64),
+            vettori=np.frombuffer(b"".join(r[2] for r in righe), dtype="<f4").reshape(len(righe), self.embedder.dim),
+            percorsi=np.array([r[1] for r in righe], dtype=object),
+        )
 
     def avvisi(self) -> dict[str, list[str]]:
         return {p: json.loads(a) for p, a in
