@@ -46,3 +46,14 @@ def test_push_reale_bloccato_senza_vettori(repo_condiviso, nb_nel_path):
     esito = subprocess.run(["git", "push", "-q"], cwd=r.a, capture_output=True, text=True)
     assert esito.returncode != 0
     assert "vettori mancanti" in esito.stderr
+
+
+def test_commit_parziale_bloccato_con_istruzioni(repo_condiviso, nb_nel_path):
+    r = repo_condiviso
+    installa(r.a)
+    scrivi(r.a, "generale/benvenuto.md", "# Benvenuto\n\ntesto nuovo\n")
+    esito = subprocess.run(["git", "commit", "-m", "parziale", "generale/benvenuto.md"],
+                           cwd=r.a, capture_output=True, text=True)
+    assert esito.returncode != 0
+    assert "git add generale/benvenuto.md" in esito.stderr
+    assert ".nb/emb" not in g(r.a, "status", "--porcelain")

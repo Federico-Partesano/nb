@@ -2,15 +2,17 @@
 from __future__ import annotations
 
 import json
+import os
+import shlex
 import subprocess
 import sys
 from pathlib import Path
 
-from nb.coerenza import mancanti_a, richiesti_a
+from nb.coerenza import emb_tracciati, mancanti_a, richiesti_a
 from nb.config import carica
 from nb.embedder import crea
 from nb.fonti import indicizzabile
-from nb.gitutil import GitError, git, git_add, git_bytes, in_staging, lista_z
+from nb.gitutil import GitError, git, git_add, git_bytes, git_dir, in_staging, lista_z
 from nb.guardia import EsitoGuardia, controlla
 from nb.regole import bloccanti, controlla_file
 from nb.vettori import assicura, percorso_rel
@@ -58,10 +60,25 @@ def pre_commit(root: Path) -> int:
         _err("commit bloccato da nb (solo in emergenza: git commit --no-verify)")
         return 1
     richiesti = richiesti_a(config, "", [p for p in staged if indicizzabile(p)])
+    if richiesti and _commit_parziale(root):
+        # `git commit <file>` usa un indice temporaneo: i vettori aggiunti qui non finirebbero
+        # nell'indice vero e il commit successivo li cancellerebbe
+        tracciati = emb_tracciati(root, "HEAD")
+        senza = sorted({p for h, (p, _) in richiesti.items() if percorso_rel(h) not in tracciati})
+        if senza:
+            _err("✋ commit parziale (git commit <file>): nb non può aggiungere i vettori nuovi.",
+                 f"   Fai: git add {shlex.join(senza)} && git commit")
+            return 1
+        return 0
     if richiesti:
         assicura(config.emb_dir, crea(config), {h: t for h, (_, t) in richiesti.items()})
         git_add(root, [percorso_rel(h) for h in richiesti])
     return 0
+
+
+def _commit_parziale(root: Path) -> bool:
+    indice = os.environ.get("GIT_INDEX_FILE")
+    return bool(indice) and (root / indice).resolve() != (git_dir(root) / "index").resolve()
 
 
 def _file_da_pushare(root: Path, locale: str, remoto: str) -> list[str]:

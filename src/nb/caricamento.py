@@ -10,7 +10,7 @@ import yaml
 from nb.chunker import RE_TITOLO, chunk_di
 from nb.config import CARTELLA_TIPO, Config
 from nb.fonti import indicizzabile, separa_frontmatter
-from nb.gitutil import GitError, git, git_add, in_staging, lista_z, upstream
+from nb.gitutil import GitError, git, git_add, lista_z, rebase_in_corso, staging_vuoto, upstream
 from nb.guardia import controlla
 from nb.indice import Indice
 from nb.regole import bloccanti, controlla_md, controlla_percorso
@@ -18,6 +18,7 @@ from nb.ricerca import simili
 from nb.vettori import chiave, percorso_rel
 
 SOGLIA_DUPLICATO = 0.8
+TIMEOUT_PULL = 20.0
 CONVENZIONI = (
     "Cartelle: progetti/<progetto>/analisi|documentazione|call/ oppure generale/. "
     "Nomi: minuscolo-con-trattini.md; trascrizioni AAAA-MM-GG-titolo.md dentro call/. "
@@ -148,19 +149,34 @@ def _valida(indice: Indice, piano: list[VocePiano]) -> tuple[dict[str, str], dic
     return contenuti, aggiorna, esiti
 
 
+def _aggiorna(root: Path, push: bool) -> list[str]:
+    """pull --rebase prima di scrivere. Restituisce avvisi; solleva se non si può proseguire."""
+    try:
+        git(root, "pull", "--rebase", "--autostash", "--quiet", timeout=TIMEOUT_PULL)
+        return []
+    except GitError as e:
+        if rebase_in_corso(root):
+            git(root, "rebase", "--abort")  # rimette anche le modifiche messe da parte con l'autostash
+            raise CaricamentoError(
+                "i tuoi commit locali non ancora pushati vanno in conflitto con il remoto: "
+                "risolvi con `git pull --rebase` e poi ricarica") from None
+        if push:
+            raise CaricamentoError(f"remoto non raggiungibile ({e}): riprova più tardi o carica con push=false") from None
+        return [f"remoto non raggiungibile: commit solo locale, fai il push più tardi ({e})"]
+
+
 def carica_fonti(indice: Indice, piano: list[VocePiano], messaggio: str | None = None, push: bool = True) -> dict:
     root = indice.config.root
     if not piano:
         raise CaricamentoError("piano vuoto")
     contenuti, aggiorna, esiti = _valida(indice, piano)
-    if in_staging(root):
+    if not staging_vuoto(root):
         raise CaricamentoError("ci sono già file in staging: committali o toglili (git restore --staged) prima di caricare")
     sporchi = lista_z(git(root, "status", "--porcelain", "-z", "--", *contenuti))
     if sporchi:
         raise CaricamentoError("modifiche locali non committate su: " + ", ".join(s[3:] for s in sporchi))
     up = upstream(root)
-    if up:
-        git(root, "pull", "--rebase", "--autostash", "--quiet")
+    avvisi_remoto = _aggiorna(root, push) if up else []
     base = git(root, "rev-parse", "HEAD").strip()
     for dest in contenuti:
         esiste = (root / dest).exists()
@@ -194,7 +210,7 @@ def carica_fonti(indice: Indice, piano: list[VocePiano], messaggio: str | None =
             _ripristina(indice, base, contenuti, creati, vettori, nuovi)
             raise CaricamentoError(f"push rifiutato, caricamento annullato: {e}") from None
         pushato = True
-    avvisi = [str(e) for e in esiti]
+    avvisi = [str(e) for e in esiti] + avvisi_remoto
     if not up:
         avvisi.append("branch senza upstream: commit solo locale, nessun push")
     return {"commit": commit, "pushato": pushato, "file": list(contenuti), "avvisi": avvisi}

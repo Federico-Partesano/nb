@@ -1,5 +1,5 @@
 import pytest
-from aiuti import g, scrivi
+from aiuti import commit_e_push, g, scrivi
 
 from nb.caricamento import CaricamentoError, VocePiano, carica_fonti, componi, proponi
 from nb.config import carica, scrivi_default
@@ -115,3 +115,42 @@ def test_senza_upstream_commit_locale(tmp_path):
     esito = carica_fonti(indice_di(root), [VocePiano(s, "generale/a.md", {})])
     assert esito["pushato"] is False
     assert any("upstream" in a for a in esito["avvisi"])
+
+
+def test_staging_con_cancellazione_rifiutato(repo_condiviso, tmp_path):
+    r = repo_condiviso
+    g(r.a, "rm", "-q", "generale/benvenuto.md")
+    s = sorgente(tmp_path, "t.md", "ciao\n")
+    with pytest.raises(CaricamentoError, match="staging"):
+        carica_fonti(indice_di(r.a), [VocePiano(s, "generale/nuovo.md", {})])
+
+
+def test_remoto_irraggiungibile_senza_push_committa(repo_condiviso, tmp_path):
+    r = repo_condiviso
+    g(r.a, "remote", "set-url", "origin", str(r.remoto) + "-sparito")
+    s = sorgente(tmp_path, "t.md", "ciao offline\n")
+    esito = carica_fonti(indice_di(r.a), [VocePiano(s, "generale/offline.md", {})], push=False)
+    assert esito["pushato"] is False
+    assert any("remoto non raggiungibile" in a for a in esito["avvisi"])
+    assert g(r.a, "log", "-1", "--format=%s").strip() == "nb: carica generale/offline.md"
+
+
+def test_remoto_irraggiungibile_con_push_errore_chiaro(repo_condiviso, tmp_path):
+    r = repo_condiviso
+    g(r.a, "remote", "set-url", "origin", str(r.remoto) + "-sparito")
+    s = sorgente(tmp_path, "t.md", "ciao\n")
+    with pytest.raises(CaricamentoError, match="remoto non raggiungibile"):
+        carica_fonti(indice_di(r.a), [VocePiano(s, "generale/offline.md", {})])
+    assert not (r.a / "generale/offline.md").exists()
+
+
+def test_pull_in_conflitto_annulla_rebase(repo_condiviso, tmp_path):
+    r = repo_condiviso
+    commit_e_push(r.b, "generale/benvenuto.md", "# Benvenuto\n\nversione B\n", "b")
+    scrivi(r.a, "generale/benvenuto.md", "# Benvenuto\n\nversione A\n")
+    g(r.a, "commit", "-qam", "a locale")
+    s = sorgente(tmp_path, "t.md", "ciao\n")
+    with pytest.raises(CaricamentoError, match="commit locali"):
+        carica_fonti(indice_di(r.a), [VocePiano(s, "generale/x.md", {})])
+    assert not (r.a / ".git/rebase-merge").exists() and not (r.a / ".git/rebase-apply").exists()
+    assert g(r.a, "log", "-1", "--format=%s").strip() == "a locale"

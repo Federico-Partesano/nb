@@ -63,6 +63,20 @@ def in_staging(root: Path) -> list[str]:
     return lista_z(git(root, "diff", "--cached", "--name-only", "-z", "--diff-filter=ACMR"))
 
 
+def staging_vuoto(root: Path) -> bool:
+    """True se non c'è nulla in staging (comprese cancellazioni e rinomine)."""
+    return not git(root, "diff", "--cached", "--name-only", "-z")
+
+
+def git_dir(root: Path) -> Path:
+    return Path(git(root, "rev-parse", "--absolute-git-dir").strip())
+
+
+def rebase_in_corso(root: Path) -> bool:
+    d = git_dir(root)
+    return (d / "rebase-merge").exists() or (d / "rebase-apply").exists()
+
+
 def git_add(root: Path, percorsi: list[str]) -> None:
     for i in range(0, len(percorsi), 200):
         git(root, "add", "--", *percorsi[i:i + 200])
@@ -76,8 +90,8 @@ class Commit:
     messaggio: str
 
 
-def commit_che_toccano(root: Path, intervallo: str, percorso: str) -> list[Commit]:
-    uscita = git(root, "log", intervallo, "--format=%h%x1f%an%x1f%ar%x1f%s", "--", percorso)
+def commit_che_toccano(root: Path, revisioni: list[str], percorso: str) -> list[Commit]:
+    uscita = git(root, "log", *revisioni, "--format=%h%x1f%an%x1f%ar%x1f%s", "--", percorso)
     return [Commit(*riga.split("\x1f", 3)) for riga in uscita.splitlines() if riga]
 
 

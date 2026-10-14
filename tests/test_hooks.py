@@ -1,5 +1,6 @@
 import json
 import os
+import subprocess
 
 from aiuti import commit_e_push, g, scrivi
 
@@ -97,3 +98,24 @@ def test_claude_pre_edit_ignora_altro(repo_condiviso):
     r = repo_condiviso
     assert claude_pre_edit(r.a, json.dumps({"tool_input": {"file_path": "/etc/hosts"}})) == 0
     assert claude_pre_edit(r.a, "") == 0
+
+
+def test_pre_commit_risoluzione_merge_non_bloccata(repo_condiviso):
+    r = repo_condiviso
+    commit_e_push(r.b, "generale/benvenuto.md", "# Benvenuto\n\nversione B\n", "b")
+    scrivi(r.a, "generale/benvenuto.md", "# Benvenuto\n\nversione A\n")
+    g(r.a, "commit", "-qam", "a")
+    subprocess.run(["git", "pull", "--no-rebase", "-q"], cwd=r.a, capture_output=True)
+    assert (r.a / ".git/MERGE_HEAD").exists()
+    scrivi(r.a, "generale/benvenuto.md", "# Benvenuto\n\nversione unita\n")
+    g(r.a, "add", "-A")
+    assert pre_commit(r.a) == 0
+
+
+def test_messaggio_obsoleto_suggerisce_autostash(repo_condiviso, capsys):
+    r = repo_condiviso
+    commit_e_push(r.b, "generale/benvenuto.md", "remoto\n", "remoto")
+    scrivi(r.a, "generale/benvenuto.md", "locale\n")
+    g(r.a, "add", "-A")
+    pre_commit(r.a)
+    assert "git pull --rebase --autostash" in capsys.readouterr().err
