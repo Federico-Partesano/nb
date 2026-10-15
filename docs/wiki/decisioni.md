@@ -24,3 +24,10 @@ Registro append-only: la voce più recente in fondo. Formato: **decisione** — 
 - **La guardia ignora i commit di un merge in corso; suggerisce `--autostash`** — prima bloccava ogni risoluzione di conflitto e suggeriva un comando che falliva.
 - **Hook Claude Code blocca (exit 2) invece di avvisare** — con exit 2 Claude riceve il motivo e propone il pull — un passaggio in più se l'utente vuole modificare comunque.
 - **`carica_fonti` offline**: errore con `push=True`, commit locale con avviso con `push=False`; rebase a metà annullato — il caricamento non deve mai lasciare il repo in uno stato strano.
+
+## 2026-10-15 — Windows e CI
+- **CRLF normalizzato in LF in `separa_frontmatter`, prima di tutto il resto** — git su Windows mette `\r\n` nel working tree: senza normalizzazione cambiano `testo_embed` e hash e Windows ricalcola tutti i vettori — i file LF non cambiano, nessuna migrazione.
+- **stdout/stderr della CLI riconfigurati in UTF-8 all'import di `cli.py`** — su Windows, con output in pipe, Python usa cp1252 (stdout può andare in crash, stderr stampa `\u270b`).
+- **Script degli hook scritti con `newline="\n"`** — `Path.write_text` su Windows scrive CRLF e `sh` non esegue `#!/bin/sh\r`.
+- **`nb reembed` svuota le tabelle invece di cancellare `index.db`** — su Windows il file aperto dal server MCP non si può cancellare.
+- **CI su tre sistemi a ogni push** — Windows non si può provare in locale: la CI è l'unica verifica.

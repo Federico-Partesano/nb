@@ -93,3 +93,20 @@ def test_hook_pre_commit_blocca(repo_condiviso, monkeypatch):
 def test_hook_sconosciuto(repo_condiviso, monkeypatch):
     monkeypatch.chdir(repo_condiviso.a)
     assert runner.invoke(app, ["hook", "boh"]).exit_code == 2
+
+
+def test_reembed_con_indice_aperto_altrove(kb, monkeypatch):
+    # come con il server MCP attivo: su Windows un file aperto non si può cancellare
+    from nb.config import carica
+    from nb.embedder import crea
+    from nb.indice import Indice
+
+    scrivi(kb, "generale/a.md", "# A\nuno\n")
+    c = carica(kb)
+    aperto = Indice(c, crea(c))
+    aperto.sync()
+    monkeypatch.chdir(kb)
+    res = runner.invoke(app, ["reembed", "--si"])
+    assert res.exit_code == 0, res.output
+    assert "1 vettori ricalcolati" in res.output
+    aperto.close()

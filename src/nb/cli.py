@@ -125,11 +125,10 @@ def reembed(si: bool = typer.Option(False, "--si", help="non chiedere conferma")
     config = indice.config
     if not si:
         typer.confirm(f"Cancello .nb/emb e ricalcolo tutti i vettori con {config.model_id}. Procedo?", abort=True)
-    indice.close()
     shutil.rmtree(config.emb_dir, ignore_errors=True)
-    for suffisso in ("", "-wal", "-shm"):
-        Path(f"{config.index_path}{suffisso}").unlink(missing_ok=True)
-    rep = Indice(config, crea(config)).sync()
+    indice.svuota()
+    rep = indice.sync()
+    indice.close()
     typer.echo(f"{len(rep.vettori_nuovi)} vettori ricalcolati. Ora: git add -A .nb && "
                "git commit -m 'nb: reembed' && git push")
 

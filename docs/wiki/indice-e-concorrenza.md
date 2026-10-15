@@ -18,6 +18,7 @@ Sullo stesso `.nb/index.db` lavorano insieme: il server MCP (più thread: mcp 2.
 - `assicura` legge prima di calcolare: un vettore già presente non viene mai ricalcolato.
 
 ## Schema
+- Mai cancellare `index.db` mentre il processo lo usa: su Windows un altro processo (il server MCP) può tenerlo aperto. Per ripartire da zero c'è `Indice.svuota()`.
 - `SCHEMA` in `indice.py` (oggi `"2"`) e `model_id` stanno in `meta`. Diversi da quanto atteso, o DB corrotto → file cancellato e ricostruito da `.md` + `.nb/emb/` (i vettori su disco vengono riusati, quindi è veloce).
 
 ## Ricerca

@@ -170,6 +170,15 @@ class Indice:
             percorsi=np.array([r[1] for r in righe], dtype=object),
         )
 
+    def svuota(self) -> None:
+        """Cancella tutte le righe (non il file: su Windows può essere aperto da un altro processo)."""
+        with self.lock:
+            self.db.execute("BEGIN IMMEDIATE")
+            for tabella in ("chunk_fts", "chunk", "file"):
+                self.db.execute(f"DELETE FROM {tabella}")
+            self.db.commit()
+            self._matrice = None
+
     def avvisi(self) -> dict[str, list[str]]:
         return {p: json.loads(a) for p, a in
                 self.db.execute("SELECT percorso, avvisi FROM file WHERE avvisi != '[]' ORDER BY percorso")}

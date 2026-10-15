@@ -2,12 +2,8 @@
 
 Quando chiudi una voce: test che la riproduce → correzione → voce rimossa da qui → riga in `decisioni.md` se è una scelta.
 
-## Piattaforme (mai provate: i test girano solo su macOS)
-- **Windows, fine riga CRLF**: `split("\n")` lascia `\r` nel testo → `testo_embed` e hash diversi da quelli di Mac/Linux → il PC Windows ricalcola tutti i vettori in locale e lascia `.bin` non tracciati in `.nb/emb/`. Correzione: normalizzare `\r\n` → `\n` in `fonti.separa_frontmatter`/`analizza`. Il pre-push non è colpito (legge i blob git, già LF).
-- **Windows, stderr non UTF-8**: con output catturato da git, Python usa cp1252 e `✋ ⚠ ›` possono sollevare `UnicodeEncodeError` negli hook. Correzione: `sys.stdout/stderr.reconfigure(encoding="utf-8", errors="replace")` all'avvio della CLI.
-- **Windows, background**: `start_new_session` in `_indicizza_in_background` è solo POSIX.
-- **Test non portabili**: `/etc/hosts`, `chmod`, script `sh` in `test_hooks`/`test_e2e`.
-- Prossimo passo proposto: GitHub Actions con matrice ubuntu/windows/macos.
+## Piattaforme
+- CI (`.github/workflows/test.yml`): suite completa su ubuntu, windows e macos; test del modello reale su ubuntu e windows. Una piattaforma rossa in CI è un bug aperto: annotalo qui finché non è chiuso.
 
 ## Minori rimandati dalla revisione finale
 - pre-push: push forzato con sha remoto sconosciuto → `GitError` non gestito (traceback).

@@ -188,3 +188,12 @@ def test_lock_non_tenuto_durante_embedding(kb):
 
     ind.embedder = Sonda(c.model_id, c.dim)
     assert ind.sync().aggiunti == ["generale/nuovo.md"]
+
+
+def test_svuota(kb):
+    scrivi(kb, "generale/a.md", DUE_SEZIONI)
+    ind = nuovo(kb)
+    ind.sync()
+    ind.svuota()
+    assert conta(ind, "file") == 0 and conta(ind, "chunk") == 0 and conta(ind, "chunk_fts") == 0
+    assert ind.sync().aggiunti == ["generale/a.md"]
