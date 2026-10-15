@@ -155,7 +155,7 @@ def test_indicizzazione_in_background(kb):
     scrivi(kb, "generale/a.md", "# A\nuno\n")
     _indicizza_in_background(kb)
     db = kb / ".nb" / "index.db"
-    for _ in range(100):
+    for _ in range(600):  # fino a 60 s: su Windows l'avvio a freddo di Python + numpy è lento
         if db.exists():
             try:
                 with sqlite3.connect(db) as c:
