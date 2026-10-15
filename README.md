@@ -7,7 +7,7 @@ Design: `docs/specs/2026-10-14-nb-design.md`
 ## Installazione (ogni PC)
 
 ```bash
-uv tool install --python 3.12 git+<URL-GITEA>/nb.git
+uv tool install --python 3.12 git+https://github.com/Federico-Partesano/nb.git
 ```
 
 Poi, dentro il knowledge repo clonato: `nb init`.

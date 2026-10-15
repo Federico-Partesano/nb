@@ -4,7 +4,7 @@ Analisi, documentazione e trascrizioni delle call in markdown, interrogabili da 
 
 ## Primo avvio (una volta per PC)
 
-1. Installa nb: `uv tool install --python 3.12 git+<URL-GITEA>/nb.git`
+1. Installa nb: `uv tool install --python 3.12 git+https://github.com/Federico-Partesano/nb.git`
 2. Clona questo repo ed entra nella cartella: `nb init` (attiva gli hook git).
 3. Apri Claude Code qui dentro e approva il server MCP `nb` quando te lo chiede.
 4. La prima ricerca scarica il modello di embedding (~220 MB, una volta sola).
