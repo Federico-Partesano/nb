@@ -36,7 +36,7 @@ def installa(root: Path) -> None:
     cartella.mkdir(exist_ok=True)
     for nome in NOMI:
         p = cartella / nome
-        p.write_text(SCRIPT.format(nome=nome), encoding="utf-8")
+        p.write_text(SCRIPT.format(nome=nome), encoding="utf-8", newline="\n")  # sh su Windows: niente CRLF
         p.chmod(0o755)
     git(root, "config", "core.hooksPath", ".githooks")
 
@@ -127,8 +127,12 @@ def _riepilogo(uscita: str) -> str:
 
 
 def _indicizza_in_background(root: Path) -> None:
+    if os.name == "nt":
+        staccato = {"creationflags": subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP}
+    else:
+        staccato = {"start_new_session": True}
     subprocess.Popen([sys.executable, "-m", "nb", "index", "--silenzioso"], cwd=root,
-                     start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **staccato)
 
 
 def post_sync(root: Path, nome: str, args: list[str]) -> int:

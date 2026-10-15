@@ -50,7 +50,8 @@ def elenca_md(root: Path) -> list[str]:
 
 def separa_frontmatter(testo: str) -> tuple[dict | None, str, int, str | None]:
     """Restituisce (frontmatter, corpo, riga_corpo, errore)."""
-    testo = testo.removeprefix("﻿")
+    # CRLF (git su Windows) → LF: stesso testo, quindi stessi hash dei vettori su ogni sistema
+    testo = testo.removeprefix("\ufeff").replace("\r\n", "\n")
     righe = testo.split("\n")
     if righe[0].strip() != "---":
         return None, testo, 1, None

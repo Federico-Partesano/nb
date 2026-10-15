@@ -81,3 +81,12 @@ def test_chunk_di(kb):
     fonte, cs = chunk_di(carica(kb), "generale/a.md", "# A\nciao\n")
     assert fonte.percorso == "generale/a.md"
     assert cs[0].percorso == "generale/a.md" and cs[0].testo == "ciao"
+
+
+def test_crlf_stessi_chunk_di_lf():
+    lf = "---\ntipo: analisi\n---\n# A\nprimo paragrafo\n\n## B\nsecondo\n"
+    crlf = lf.replace("\n", "\r\n")
+    a, b = spezza(doc(lf), 100, 20), spezza(doc(crlf), 100, 20)
+    assert [c.testo_embed for c in b] == [c.testo_embed for c in a]
+    assert [(c.riga_inizio, c.riga_fine) for c in b] == [(c.riga_inizio, c.riga_fine) for c in a]
+    assert doc(crlf).meta.tipo == "analisi"

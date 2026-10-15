@@ -1,0 +1,41 @@
+name: test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Identità git per i repo di test
+        run: |
+          git config --global user.name "nb ci"
+          git config --global user.email "ci@example.invalid"
+          git config --global init.defaultBranch main
+      - run: uv sync
+      - run: uv run pytest -q
+
+  modello:
+    name: modello reale (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/nb
+          key: modello-${{ runner.os }}-paraphrase-multilingual-MiniLM-L12-v2
+      - run: uv sync
+      - run: uv run pytest -q -m modello

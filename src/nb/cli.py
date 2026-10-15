@@ -18,6 +18,12 @@ from nb.iniziale import InitError, inizializza
 from nb.ricerca import Filtri, cerca, formatta_risultati
 from nb.vettori import gc as gc_vettori
 
+# Su Windows stdout/stderr catturati (pipe, hook git) usano la codifica locale: forziamo UTF-8
+# così i simboli (› ✋ ⚠) arrivano intatti a git, Claude Code e terminale
+for _flusso in (sys.stdout, sys.stderr):
+    if hasattr(_flusso, "reconfigure"):
+        _flusso.reconfigure(encoding="utf-8", errors="replace")
+
 app = typer.Typer(help="nb: knowledge base del team su git, interrogata da Claude Code.",
                   no_args_is_help=True, add_completion=False)
 

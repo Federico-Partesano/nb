@@ -26,7 +26,7 @@ def percorso_rel(h: str) -> str:
 def leggi(emb_dir: Path, h: str, dim: int) -> np.ndarray | None:
     try:
         dati = percorso(emb_dir, h).read_bytes()
-    except FileNotFoundError:
+    except (FileNotFoundError, PermissionError):  # PermissionError: Windows, file in sostituzione
         return None
     if len(dati) != dim * 2:
         return None
@@ -39,7 +39,13 @@ def scrivi(emb_dir: Path, h: str, vettore: np.ndarray) -> Path:
     fd, tmp = tempfile.mkstemp(dir=p.parent, prefix=f"{h}.", suffix=".tmp")  # nome unico: più scrittori insieme
     with os.fdopen(fd, "wb") as f:
         f.write(np.asarray(vettore, dtype="<f2").tobytes())
-    os.replace(tmp, p)
+    try:
+        os.replace(tmp, p)
+    except PermissionError:
+        # Windows: un altro scrittore sta sostituendo lo stesso file, con lo stesso contenuto
+        os.unlink(tmp)
+        if not p.exists():
+            raise
     return p
 
 

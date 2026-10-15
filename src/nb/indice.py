@@ -58,7 +58,11 @@ class Indice:
 
     def _connetti(self) -> sqlite3.Connection:
         db = sqlite3.connect(self.config.index_path, timeout=10, check_same_thread=False)
-        db.execute("PRAGMA journal_mode=WAL")
+        try:
+            db.execute("PRAGMA journal_mode=WAL")
+        except sqlite3.DatabaseError:
+            db.close()  # su Windows un file aperto non si può cancellare per ricostruirlo
+            raise
         return db
 
     def _apri(self) -> sqlite3.Connection:

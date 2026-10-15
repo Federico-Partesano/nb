@@ -1,10 +1,13 @@
 import json
 import os
+import sqlite3
 import subprocess
+import sys
+import time
 
 from aiuti import commit_e_push, g, scrivi
 
-from nb.hooks import NOMI, claude_pre_edit, installa, post_sync, pre_commit, pre_push
+from nb.hooks import NOMI, _indicizza_in_background, claude_pre_edit, installa, post_sync, pre_commit, pre_push
 
 
 def push_args(root):
@@ -119,3 +122,46 @@ def test_messaggio_obsoleto_suggerisce_autostash(repo_condiviso, capsys):
     g(r.a, "add", "-A")
     pre_commit(r.a)
     assert "git pull --rebase --autostash" in capsys.readouterr().err
+
+
+def test_hook_con_stderr_non_utf8(repo_condiviso):
+    r = repo_condiviso
+    scrivi(r.a, "generale/x.md", "<<<<<<< HEAD\na\n>>>>>>> b\n")
+    g(r.a, "add", "-A")
+    env = {**os.environ, "PYTHONIOENCODING": "cp1252"}  # come su Windows quando git cattura l'output
+    esito = subprocess.run([sys.executable, "-m", "nb", "hook", "pre-commit"], cwd=r.a, env=env,
+                           capture_output=True)
+    errore = esito.stderr.decode("utf-8", errors="replace")
+    assert esito.returncode == 1, errore
+    assert "✋ generale/x.md: marcatori di conflitto" in errore  # simboli leggibili, non \\u270b
+
+
+def test_cli_con_stdout_non_utf8(kb):
+    scrivi(kb, "generale/a.md", "# A\n## B\nKeycloak\n")
+    env = {**os.environ, "PYTHONIOENCODING": "cp1252"}
+    esito = subprocess.run([sys.executable, "-m", "nb", "search", "Keycloak"], cwd=kb, env=env,
+                           capture_output=True)
+    assert esito.returncode == 0, esito.stderr.decode("utf-8", errors="replace")
+    assert "generale/a.md › A › B" in esito.stdout.decode("utf-8")
+
+
+def test_script_hook_con_fine_riga_lf(repo_condiviso):
+    installa(repo_condiviso.a)
+    for nome in NOMI:
+        assert b"\r" not in (repo_condiviso.a / ".githooks" / nome).read_bytes()
+
+
+def test_indicizzazione_in_background(kb):
+    scrivi(kb, "generale/a.md", "# A\nuno\n")
+    _indicizza_in_background(kb)
+    db = kb / ".nb" / "index.db"
+    for _ in range(100):
+        if db.exists():
+            try:
+                with sqlite3.connect(db) as c:
+                    if c.execute("SELECT COUNT(*) FROM chunk").fetchone()[0] == 1:
+                        return
+            except sqlite3.Error:
+                pass
+        time.sleep(0.1)
+    raise AssertionError("indice non creato dal processo in background")
